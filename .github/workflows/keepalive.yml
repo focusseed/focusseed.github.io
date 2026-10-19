@@ -1,0 +1,36 @@
+# Keeps the FocusSeed server (Supabase free plan) awake: a free project is paused after 7 days without any use.
+# Once a day this reads the public leaderboard, the same thing the app does when anyone opens it (no private data).
+# GitHub also turns off scheduled tasks in a repository with no change for 60 days, so after 50 quiet days this task
+# leaves an empty commit to keep itself running.
+name: Keep the server awake
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/keepalive.yml']
+permissions:
+  contents: write
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read the public leaderboard
+        run: |
+          code=$(curl -s -o /tmp/out.json -w '%{http_code}' -X POST \
+            'https://ocynhearonjglkjnoknz.supabase.co/rest/v1/rpc/lb_top' \
+            -H 'apikey: sb_publishable_dk1hqgtTs0yFzUAcYb4umg_Z97F2KHv' \
+            -H 'Content-Type: application/json' \
+            -d '{"period":"week","lim":1}')
+          echo "server answered $code"
+          test "$code" = "200"
+      - uses: actions/checkout@v4
+      - name: Stay active (after 50 days without a change)
+        run: |
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt $(( 50 * 86400 )) ]; then
+            git config user.name focusseed
+            git config user.email focusseed@users.noreply.github.com
+            git commit --allow-empty -m "Keep the daily task running"
+            git push
+          fi
